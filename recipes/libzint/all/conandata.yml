@@ -1,0 +1,8 @@
+sources:
+  "2.9.3":
+    url: "https://github.com/Jihadist/libzint/archive/refs/tags/2.9.3.tar.gz"
+    sha256: "2C792B08B0E3CFEFABDBF21F12F8A0340425EDB390B6FD4C3F89AE6FF0167DFB"
+patches:
+  "2.9.3":
+    - patch_file: "patches/0001-Prepare-for-conan-integration.patch"
+      base_path: "source_subfolder"

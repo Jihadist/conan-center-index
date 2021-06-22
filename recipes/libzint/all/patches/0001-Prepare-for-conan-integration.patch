@@ -1,0 +1,340 @@
+From 3917dc8d3d1a6f972c05780c80372cd373f43246 Mon Sep 17 00:00:00 2001
+From: atom <tomasiche@gmail.com>
+Date: Fri, 18 Jun 2021 13:23:27 +0300
+Subject: [PATCH] Prepare for conan integration
+
+Signed-off-by: atom <tomasiche@gmail.com>
+---
+ CMakeLists.txt               | 70 +++++++++++++++++++----------------
+ backend/CMakeLists.txt       | 24 +++---------
+ backend/tests/CMakeLists.txt |  2 +-
+ frontend/CMakeLists.txt      | 46 +++++++++++------------
+ frontend_qt/CMakeLists.txt   | 71 ++++++++++++++++++------------------
+ getopt/CMakeLists.txt        |  7 +++-
+ 6 files changed, 108 insertions(+), 112 deletions(-)
+ rewrite frontend/CMakeLists.txt (62%)
+ rewrite frontend_qt/CMakeLists.txt (63%)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fa8e0b1..d7b6146 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -5,7 +5,16 @@
+ cmake_minimum_required(VERSION 3.5)
+ project(zint-package)
+ 
++list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
++message(STATUS "MODULE PATH" ${CMAKE_MODULE_PATH})
+ set(CMAKE_INCLUDE_CURRENT_DIR ON)
++#find_package(Qt5)
++#if (NOT Qt5_FOUND)
++#    find_package(Qt6)
++#endif()
++#find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
++find_package(PNG)
++find_package(ZLIB)
+ 
+ #set(CMAKE_VERBOSE_MAKEFILE ON)
+ #comment or remove the above line before release
+@@ -18,7 +27,7 @@ set(ZINT_VERSION "${ZINT_VERSION_MAJOR}.${ZINT_VERSION_MINOR}.${ZINT_VERSION_REL
+ 
+ add_definitions(-DZINT_VERSION=\"${ZINT_VERSION}\")
+ 
+-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
++#set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
+ 
+ option(ZINT_DEBUG    "Set debug compile flag"          OFF)
+ option(ZINT_SANITIZE "Set sanitize compile/link flags" OFF)
+@@ -27,6 +36,31 @@ option(ZINT_STATIC   "Build static library"            OFF)
+ option(ZINT_USE_PNG  "Build with PNG support"          ON)
+ option(ZINT_USE_QT   "Build with QT support"           ON)
+ 
++if(NOT ZINT_USE_QT)
++    message(STATUS "Qt support was disabled for this build")
++elseif($ENV{CMAKE_PREFIX_PATH} MATCHES "6[.][0-9][.][0-9]")
++    set(USE_QT6 TRUE)
++    message(STATUS "Using Qt6")
++    cmake_policy(SET CMP0012 NEW) # Recognize constants in if()
++    cmake_policy(SET CMP0072 NEW) # Choose OpenGL over legacy GL
++    find_package(Qt6 COMPONENTS Widgets Gui Xml UiTools)
++
++    if(Qt6_FOUND)
++        set(QT_FOUND TRUE)
++    else()
++        message(STATUS "Could NOT find Qt6")
++    endif()
++else()
++    message(STATUS "Using Qt5")
++    find_package(Qt5 COMPONENTS Widgets Gui Xml UiTools)
++
++    if(Qt5_FOUND)
++        set(QT_FOUND TRUE)
++    else()
++        message(STATUS "Could NOT find Qt5")
++    endif()
++endif()
++
+ include(SetPaths.cmake)
+ 
+ include(CheckCXXCompilerFlag)
+@@ -102,37 +136,11 @@ endif()
+ add_subdirectory(backend)
+ add_subdirectory(frontend)
+ 
+-if(NOT ZINT_USE_QT)
+-    message(STATUS "Qt support was disabled for this build")
+-elseif($ENV{CMAKE_PREFIX_PATH} MATCHES "6[.][0-9][.][0-9]")
+-    set(USE_QT6 TRUE)
+-    message(STATUS "Using Qt6")
+-    cmake_policy(SET CMP0012 NEW) # Recognize constants in if()
+-    cmake_policy(SET CMP0072 NEW) # Choose OpenGL over legacy GL
+-    find_package(Qt6Widgets)
+-    find_package(Qt6Gui)
+-    find_package(Qt6UiTools)
+-    find_package(Qt6Xml)
+-
+-    if(Qt6Widgets_FOUND AND Qt6Gui_FOUND AND Qt6UiTools_FOUND AND Qt6Xml_FOUND)
+-        add_subdirectory(frontend_qt)
+-    else()
+-        message(STATUS "Could NOT find Qt6")
+-    endif()
+-else()
+-    message(STATUS "Using Qt5")
+-    find_package(Qt5Widgets)
+-    find_package(Qt5Gui)
+-    find_package(Qt5UiTools)
+-    find_package(Qt5Xml)
+-
+-    if(Qt5Widgets_FOUND AND Qt5Gui_FOUND AND Qt5UiTools_FOUND AND Qt5Xml_FOUND)
+-        add_subdirectory(frontend_qt)
+-    else()
+-        message(STATUS "Could NOT find Qt5")
+-    endif()
++if(QT_FOUND)
++    add_subdirectory(frontend_qt)
+ endif()
+ 
++
+ configure_file(
+   "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
+   "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+@@ -148,7 +156,7 @@ else()
+     set(CMAKE_MODULES_INSTALL_PATH ${CMAKE_ROOT}/Modules)
+ endif()
+ 
+-install(FILES cmake/modules/FindZint.cmake DESTINATION ${CMAKE_MODULES_INSTALL_PATH} COMPONENT Devel)
++#install(FILES cmake/modules/FindZint.cmake DESTINATION ${CMAKE_MODULES_INSTALL_PATH} COMPONENT Devel)
+ 
+ # This needs to be run very last so other parts of the scripts can take
+ # advantage of this.
+diff --git a/backend/CMakeLists.txt b/backend/CMakeLists.txt
+index 28f7dd8..07983aa 100644
+--- a/backend/CMakeLists.txt
++++ b/backend/CMakeLists.txt
+@@ -13,26 +13,12 @@ set(zint_TWODIM_SRCS code16k.c codablock.c dmatrix.c pdf417.c qr.c maxicode.c co
+ set(zint_OUTPUT_SRCS vector.c ps.c svg.c emf.c bmp.c pcx.c gif.c png.c tif.c raster.c output.c)
+ set(zint_SRCS ${zint_OUTPUT_SRCS} ${zint_COMMON_SRCS} ${zint_ONEDIM_SRCS} ${zint_POSTAL_SRCS} ${zint_TWODIM_SRCS})
+ 
+-add_library(zint SHARED ${zint_SRCS})
+-
+ if(ZINT_STATIC)
+-    add_library(zint-static STATIC ${zint_SRCS})
++    add_library(${PROJECT_NAME} STATIC ${zint_SRCS})
++else()
++    add_library(${PROJECT_NAME} SHARED ${zint_SRCS})
+ endif()
+ 
+-function(zint_target_link_libraries library)
+-    target_link_libraries(zint ${library})
+-    if(ZINT_STATIC)
+-        target_link_libraries(zint-static ${library})
+-    endif()
+-endfunction()
+-
+-function(zint_target_compile_definitions scope definition)
+-    target_compile_definitions(zint ${scope} ${definition})
+-    if(ZINT_STATIC)
+-        target_compile_definitions(zint-static ${scope} ${definition})
+-    endif()
+-endfunction()
+-
+ set_target_properties(zint PROPERTIES   SOVERSION "${ZINT_VERSION_MAJOR}.${ZINT_VERSION_MINOR}"
+                                         VERSION ${ZINT_VERSION})
+ 
+@@ -41,7 +27,7 @@ if(ZINT_USE_PNG)
+ endif()
+ 
+ if(ZINT_USE_PNG AND PNG_FOUND)
+-    zint_target_link_libraries(PNG::PNG)
++    target_link_libraries(${PROJECT_NAME} PNG::PNG)
+ else()
+     zint_target_compile_definitions(PUBLIC NO_PNG)
+ endif()
+@@ -52,7 +38,7 @@ endif()
+ 
+ if(NOT MSVC)
+     # Link with standard C math library.
+-    zint_target_link_libraries(m)
++    target_link_libraries(${PROJECT_NAME} m)
+ endif()
+ 
+ if(MSVC)
+diff --git a/backend/tests/CMakeLists.txt b/backend/tests/CMakeLists.txt
+index d3a5537..2d73271 100644
+--- a/backend/tests/CMakeLists.txt
++++ b/backend/tests/CMakeLists.txt
+@@ -30,7 +30,7 @@ endif()
+ 
+ if(ZINT_STATIC)
+     add_library(testcommon-static ${testcommon_SRCS})
+-    target_link_libraries(testcommon-static zint-static)
++    target_link_libraries(testcommon-static zint)
+     target_include_directories(testcommon-static PUBLIC ${zint_backend_tests_SOURCE_DIR})
+     if(NOT HAVE_GETOPT)
+         target_link_libraries(testcommon-static zint_bundled_getopt)
+diff --git a/frontend/CMakeLists.txt b/frontend/CMakeLists.txt
+dissimilarity index 62%
+index ce1a436..753b52d 100644
+--- a/frontend/CMakeLists.txt
++++ b/frontend/CMakeLists.txt
+@@ -1,23 +1,23 @@
+-# Copyright (C) 2008 by BogDan Vatra < bogdan@licentia.eu >
+-# Copyright (C) 2009-2021 Robin Stuart <rstuart114@gmail.com>
+-
+-project(zint_frontend)
+-
+-set(zint_frontend_SRCS main.c)
+-
+-include_directories(BEFORE "${CMAKE_SOURCE_DIR}/backend")
+-
+-add_executable(zint_frontend ${zint_frontend_SRCS})
+-
+-set_target_properties(zint_frontend PROPERTIES OUTPUT_NAME "zint")
+-
+-target_link_libraries(zint_frontend zint)
+-if(NOT HAVE_GETOPT)
+-    target_link_libraries(zint_frontend zint_bundled_getopt)
+-endif()
+-
+-install(TARGETS zint_frontend DESTINATION "${BIN_INSTALL_DIR}" RUNTIME)
+-
+-if(ZINT_TEST)
+-    add_subdirectory(tests)
+-endif()
++# Copyright (C) 2008 by BogDan Vatra < bogdan@licentia.eu >
++# Copyright (C) 2009-2021 Robin Stuart <rstuart114@gmail.com>
++
++project(zint_frontend)
++
++set(${PROJECT_NAME}_SRCS main.c)
++
++add_executable(${PROJECT_NAME} ${zint_frontend_SRCS})
++
++target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../backend)
++
++set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "zint")
++
++target_link_libraries(${PROJECT_NAME} zint)
++if(NOT HAVE_GETOPT)
++    target_link_libraries(${PROJECT_NAME} zint_bundled_getopt)
++endif()
++
++install(TARGETS ${PROJECT_NAME} DESTINATION "${BIN_INSTALL_DIR}" RUNTIME)
++
++if(ZINT_TEST)
++    add_subdirectory(tests)
++endif()
+diff --git a/frontend_qt/CMakeLists.txt b/frontend_qt/CMakeLists.txt
+dissimilarity index 63%
+index 2bec9e3..03d45b2 100644
+--- a/frontend_qt/CMakeLists.txt
++++ b/frontend_qt/CMakeLists.txt
+@@ -1,36 +1,35 @@
+-# (c) 2008 by BogDan Vatra < bogdan@licentia.eu >
+-# vim: set ts=4 sw=4 et :
+-
+-project(zint-qt)
+-
+-include_directories(BEFORE "${CMAKE_SOURCE_DIR}/backend")
+-
+-set(zint-qt_SRCS barcodeitem.cpp  main.cpp  mainwindow.cpp datawindow.cpp sequencewindow.cpp exportwindow.cpp qzint.cpp)
+-
+-if(USE_QT6)
+-    qt6_wrap_cpp(zint-qt_SRCS mainwindow.h datawindow.h sequencewindow.h exportwindow.h qzint.h)
+-    qt6_wrap_ui(zint-qt_SRCS mainWindow.ui extData.ui extSequence.ui extExport.ui)
+-    qt6_add_resources(zint-qt_SRCS resources.qrc)
+-else()
+-    qt5_wrap_cpp(zint-qt_SRCS mainwindow.h datawindow.h sequencewindow.h exportwindow.h qzint.h)
+-    qt5_wrap_ui(zint-qt_SRCS mainWindow.ui extData.ui extSequence.ui extExport.ui)
+-    qt5_add_resources(zint-qt_SRCS resources.qrc)
+-endif()
+-#               grpAztec.ui  grpC39.ui         grpCodeOne.ui   grpHX.ui        grpMSICheck.ui  grpUPCA.ui
+-#               grpC11.ui    grpC49.ui         grpDBExtend.ui  grpLOGMARS.ui   grpPDF417.ui    grpUPCEAN.ui
+-#               grpC128.ui   grpChannel.ui     grpDM.ui        grpMaxicode.ui  grpQR.ui        grpVIN.ui
+-#               grpC16k.ui   grpCodabar.ui     grpDotCode.ui   grpMicroPDF.ui  grpRMQR.ui
+-#               grpC25.ui    grpCodablockF.ui  grpGrid.ui      grpMQR.ui       grpUltra.ui
+-
+-add_executable(zint-qt ${zint-qt_SRCS})
+-add_dependencies(zint-qt zint)
+-
+-link_directories( "${CMAKE_BINARY_DIR}/backend" )
+-
+-if(USE_QT6)
+-    target_link_libraries(zint-qt zint Qt6::UiTools Qt6::Xml Qt6::Gui Qt6::Core)
+-else()
+-    target_link_libraries(zint-qt zint Qt5::UiTools Qt5::Xml Qt5::Gui Qt5::Core)
+-endif()
+-
+-install(TARGETS zint-qt DESTINATION "${BIN_INSTALL_DIR}" RUNTIME)
++# (c) 2008 by BogDan Vatra < bogdan@licentia.eu >
++# vim: set ts=4 sw=4 et :
++
++project(zint-qt)
++
++
++set(CMAKE_INCLUDE_CURRENT_DIR ON)
++set(${PROJECT_NAME}_SRCS barcodeitem.cpp  main.cpp  mainwindow.cpp datawindow.cpp sequencewindow.cpp exportwindow.cpp qzint.cpp)
++
++set(CMAKE_AUTOMOC ON)
++set(CMAKE_AUTOUIC ON)
++set(CMAKE_AUTORCC ON)
++
++qt_wrap_cpp(${PROJECT_NAME}_SRCS mainwindow.h datawindow.h sequencewindow.h exportwindow.h qzint.h)
++qt_wrap_ui(${PROJECT_NAME}_SRCS mainWindow.ui extData.ui extSequence.ui extExport.ui)
++
++#               grpAztec.ui  grpC39.ui         grpCodeOne.ui   grpHX.ui        grpMSICheck.ui  grpUPCA.ui
++#               grpC11.ui    grpC49.ui         grpDBExtend.ui  grpLOGMARS.ui   grpPDF417.ui    grpUPCEAN.ui
++#               grpC128.ui   grpChannel.ui     grpDM.ui        grpMaxicode.ui  grpQR.ui        grpVIN.ui
++#               grpC16k.ui   grpCodabar.ui     grpDotCode.ui   grpMicroPDF.ui  grpRMQR.ui
++#               grpC25.ui    grpCodablockF.ui  grpGrid.ui      grpMQR.ui       grpUltra.ui
++
++add_executable(${PROJECT_NAME} resources.qrc ${zint-qt_SRCS})
++add_dependencies(${PROJECT_NAME} zint)
++
++#link_directories( "${CMAKE_BINARY_DIR}/backend" )
++target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../backend)
++target_link_libraries(${PROJECT_NAME} PUBLIC zint Qt${QT_VERSION_MAJOR}::UiTools Qt${QT_VERSION_MAJOR}::Xml Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Core Dwmapi UxTheme)
++#if(USE_QT6)
++#    target_link_libraries(zint-qt zint Qt6::UiTools Qt6::Xml Qt6::Gui Qt6::Core)
++#else()
++#    target_link_libraries(zint-qt zint Qt5::UiTools Qt5::Xml Qt5::Gui Qt5::Core)
++#endif()
++
++install(TARGETS ${PROJECT_NAME} DESTINATION "${BIN_INSTALL_DIR}" RUNTIME)
+diff --git a/getopt/CMakeLists.txt b/getopt/CMakeLists.txt
+index 85a98e4..ce15969 100644
+--- a/getopt/CMakeLists.txt
++++ b/getopt/CMakeLists.txt
+@@ -1,4 +1,7 @@
+ project(zint_bundled_getopt)
+ 
+-add_library(zint_bundled_getopt STATIC getopt.c getopt1.c)
+-target_include_directories(zint_bundled_getopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
++add_library(${PROJECT_NAME} STATIC getopt.c getopt1.c)
++target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
++
++install(TARGETS ${PROJECT_NAME} DESTINATION ${INSTALL_TARGETS_DEFAULT_ARGS})
++install(FILES getopt.h DESTINATION ${INCLUDE_INSTALL_DIR} COMPONENT Devel)
+-- 
+2.27.0.windows.1
+
